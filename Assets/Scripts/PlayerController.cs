@@ -7,10 +7,18 @@ public class PlayerController : MonoBehaviour
     [SerializeField] PlayerStatusSO playerStatusSO;
     [Header("Move")]
     public float moveForce = 10f; // WASDで加える力の大きさ
-    public TextMeshProUGUI HPText;
-    [SerializeField] GameObject statusWindow;
+    // public TextMeshProUGUI HPText;
+    // [SerializeField] GameObject statusWindow;
     public int currentHP;
-    [SerializeField] GameObject itemBoxManager;
+    // [SerializeField] GameObject itemBoxManager;
+
+    [Header("Jump")]
+    [SerializeField] float jumpSpeed = 7.5f;        // 上向きの初速（VelocityChange）
+    [SerializeField] Transform groundCheck;         // 足元位置（空の子オブジェクトを割り当てる）
+    [SerializeField] float groundCheckRadius = 0.2f;
+    [SerializeField] LayerMask groundMask = ~0;     // 地面レイヤー（必要なら設定）
+    bool jumpRequested;
+    bool isGrounded;
     [Header("Attack")]
     [SerializeField] float attackCooldown = 0.35f; // 連打抑制したいとき
     float nextAttackTime = 0f;
@@ -29,23 +37,23 @@ public class PlayerController : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         animator = GetComponent<Animator>();
         currentHP = playerStatusSO.HP;
-        HPText.text = "HP: " + currentHP.ToString();
+        // HPText.text = "HP: " + currentHP.ToString();
     }
 
     // ---- 入力・アニメはフレーム更新で処理 ----
     void Update()
     {
-        HPText.text = "HP: " + currentHP.ToString();
+        // HPText.text = "HP: " + currentHP.ToString();
         var k = Keyboard.current;
         var m = Mouse.current;
         if (k == null || m == null) return;
 
         // ---- 攻撃：右クリックの「押された瞬間」
-        if (m.rightButton.wasPressedThisFrame && Time.time >= nextAttackTime)
-        {
-            animator.SetTrigger("Attack");      // ← Trigger を使うのが楽
-            nextAttackTime = Time.time + attackCooldown;
-        }
+        // if (m.rightButton.wasPressedThisFrame && Time.time >= nextAttackTime)
+        // {
+        //     animator.SetTrigger("Attack");      // ← Trigger を使うのが楽
+        //     nextAttackTime = Time.time + attackCooldown;
+        // }
 
         // if (k.tabKey.wasPressedThisFrame)
         // {
@@ -64,6 +72,8 @@ public class PlayerController : MonoBehaviour
         //         Time.timeScale = 1f;
         //     }
         // }
+
+        if (k.spaceKey.wasPressedThisFrame) jumpRequested = true;
 
         float h = 0f, v = 0f;
         if (k.aKey.isPressed) h -= 1f;
@@ -92,18 +102,39 @@ public class PlayerController : MonoBehaviour
 
         // --- アニメーション（押下状態から算出） ---
         // 元コードの意図を踏襲：W/SでRun、AでRunLeft、DでRunRight
-        bool run = k.wKey.isPressed || k.sKey.isPressed;
-        bool runLeft = k.aKey.isPressed;
-        bool runRight = k.dKey.isPressed;
+        bool run = k.wKey.isPressed || k.sKey.isPressed || k.aKey.isPressed || k.dKey.isPressed;
 
         animator.SetBool("Run", run);
-        animator.SetBool("RunLeft", runLeft);
-        animator.SetBool("RunRight", runRight);
     }
 
     // ---- 物理は固定タイミングで処理 ----
     void FixedUpdate()
     {
+        isGrounded = false;
+        if (groundCheck != null)
+        {
+            // 足元でSphereCast風の接地確認
+            isGrounded = Physics.CheckSphere(groundCheck.position, groundCheckRadius, groundMask, QueryTriggerInteraction.Ignore);
+        }
+        else
+        {
+            // groundCheck 未設定のときの簡易フォールバック
+            isGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.3f, groundMask, QueryTriggerInteraction.Ignore);
+        }
+
+        // --- ジャンプ実行 ---
+        if (jumpRequested && isGrounded)
+        {
+            // いまの上向き/下向き速度を一旦リセットしてから上向き初速を与える
+            var v = rb.linearVelocity;
+            v.y = 0f;
+            rb.linearVelocity = v;
+            rb.AddForce(Vector3.up * jumpSpeed, ForceMode.VelocityChange);
+
+            animator.SetTrigger("Jump");
+        }
+        jumpRequested = false;
+        
         cameraForward = Vector3.Scale(Camera.main.transform.forward, new Vector3(1, 0, 1)).normalized;
         moveForward = cameraForward * inputVertical + Camera.main.transform.right * inputHorizontal;
         rb.linearVelocity = moveForward * moveForce + new Vector3(0, rb.linearVelocity.y, 0);
