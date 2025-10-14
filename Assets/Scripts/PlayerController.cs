@@ -49,11 +49,11 @@ public class PlayerController : MonoBehaviour
         if (k == null || m == null) return;
 
         // ---- 攻撃：右クリックの「押された瞬間」
-        // if (m.rightButton.wasPressedThisFrame && Time.time >= nextAttackTime)
-        // {
-        //     animator.SetTrigger("Attack");      // ← Trigger を使うのが楽
-        //     nextAttackTime = Time.time + attackCooldown;
-        // }
+        if (m.rightButton.wasPressedThisFrame && Time.time >= nextAttackTime)
+        {
+            animator.SetTrigger("Attack");      // ← Trigger を使うのが楽
+            nextAttackTime = Time.time + attackCooldown;
+        }
 
         // if (k.tabKey.wasPressedThisFrame)
         // {
