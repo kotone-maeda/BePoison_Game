@@ -44,9 +44,6 @@ public class CameraController : MonoBehaviour
         // --- Yaw（水平）だけ回す ---
         float yaw = mouseX * Time.deltaTime * yawSpeed;
         transform.RotateAround(playerPos, Vector3.up, yaw);
-
-        // 視線はプレイヤーに向ける（これ自体はピッチのアニメではなく「向き」だけ）
-        transform.LookAt(playerPos, Vector3.up);
     }
 
 }
