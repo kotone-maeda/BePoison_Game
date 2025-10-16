@@ -166,8 +166,15 @@ public class SlimeController : MonoBehaviour
     // ★ プレイヤーに“食べられた”ら即Destroy（例：PlayerEat というトリガーに当たったら）
     void OnTriggerEnter(Collider col)
     {
+        if (isDead)
+        {
+            if (col.gameObject.CompareTag("PlayerEat"))
+                Destroy(gameObject);
+            return;
+        }
         if (col.gameObject.CompareTag("Weapon"))
         {
+            animator.SetTrigger("GetHit");
             damage = (int)(playerStatusSO.ATTACK / 2 - enemyStatusSO.enemyStatusList[0].Defence / 4);
             if (damage > 0) currentHP -= damage;
             return;
