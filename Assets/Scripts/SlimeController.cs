@@ -17,6 +17,9 @@ public class SlimeController : MonoBehaviour
     [SerializeField] float patrolInterval = 2.0f;   // 次の点を選ぶ最短間隔
     [SerializeField] float attackCooldown = 1.0f;
 
+    [Header("Death")]
+    [SerializeField] float destroyDelayOnDieAnim = 0f; // アニメイベント未設定の場合の保険（秒）0なら使わない
+
     private NavMeshAgent agent;
     private Animator animator;
     private int currentHP;
@@ -25,6 +28,8 @@ public class SlimeController : MonoBehaviour
     private float nextPatrolTime;
     private float nextAttackTime;
     private int areaMask;
+
+    private bool isDead = false;
 
     enum State { Patrol, Chase, Attack }
     State state = State.Patrol;
@@ -38,23 +43,30 @@ public class SlimeController : MonoBehaviour
         agent.stoppingDistance = attackRange;
         agent.autoBraking = true;
 
-        // Area マスク（指定名が無ければ AllAreas）
         int idx = NavMesh.GetAreaFromName(areaName);
         areaMask = (idx >= 0) ? (1 << idx) : NavMesh.AllAreas;
         if (idx < 0)
             Debug.LogWarning($"Area '{areaName}' が見つかりません。徘徊は全エリアで行われます。", this);
 
         currentHP = enemyStatusSO.enemyStatusList[0].HP;
-        PickNewPatrolPoint(); // 最初の目的地
+        PickNewPatrolPoint();
     }
 
     void Update()
     {
+        // ★ 死亡中は完全停止＆何もしない
+        if (isDead)
+        {
+            SafeStopAgent();
+            animator.SetBool("Walk", false);
+            return;
+        }
+
         // 状態遷移
         float dist = Vector3.Distance(target.position, transform.position);
-        if (dist <= attackRange)         state = State.Attack;
+        if (dist <= attackRange)          state = State.Attack;
         else if (dist <= detectionRadius) state = State.Chase;
-        else                              state = State.Patrol;
+        else                               state = State.Patrol;
 
         switch (state)
         {
@@ -63,13 +75,15 @@ public class SlimeController : MonoBehaviour
                 break;
 
             case State.Chase:
-                agent.isStopped = false;
-                agent.SetDestination(target.position);
+                if (CanUseAgent())
+                {
+                    agent.isStopped = false;
+                    agent.SetDestination(target.position);
+                }
                 break;
 
             case State.Attack:
-                // 周囲で停止し向きを合わせる
-                agent.isStopped = true;
+                SafeStopAgent();
                 Vector3 to = (target.position - transform.position);
                 to.y = 0f;
                 if (to.sqrMagnitude > 0.001f)
@@ -77,26 +91,30 @@ public class SlimeController : MonoBehaviour
 
                 if (Time.time >= nextAttackTime)
                 {
-                    animator.SetTrigger("Attack"); // 攻撃アニメをセットしている前提
+                    animator.SetTrigger("Attack");
                     nextAttackTime = Time.time + attackCooldown;
-                    // ダメージ判定はアニメーションイベント側でプレイヤーに与えるのが◎
+                    // ダメージはアニメイベントでプレイヤーへ
                 }
                 break;
         }
 
         // 歩行アニメ（実際に動いている間だけ）
-        bool walking = !agent.isStopped && agent.velocity.sqrMagnitude > 0.05f;
+        bool walking = CanUseAgent() && !agent.isStopped && agent.velocity.sqrMagnitude > 0.05f;
         animator.SetBool("Walk", walking);
 
-        // HP処理
-        if (currentHP <= 0) Destroy(gameObject);
+        // ★ HP処理：0以下になったら Die 発火（アニメ再生＆停止）
+        if (currentHP <= 0 && !isDead)
+        {
+            Die(); // ここで停止＆アニメ遷移
+        }
     }
 
     void PatrolTick()
     {
+        if (!CanUseAgent()) return;
+
         agent.isStopped = false;
 
-        // 目的地に着いた/止まったら次を抽選
         bool reached = (!agent.pathPending && agent.remainingDistance <= agent.stoppingDistance + 0.1f);
         if (reached || Time.time >= nextPatrolTime || agent.velocity.sqrMagnitude < 0.01f)
         {
@@ -106,7 +124,8 @@ public class SlimeController : MonoBehaviour
 
     void PickNewPatrolPoint()
     {
-        // いまの位置を中心に、指定 Area の三角形上でランダムサンプリング
+        if (!CanUseAgent()) return;
+
         Vector3 center = transform.position;
         for (int i = 0; i < 20; i++)
         {
@@ -119,16 +138,68 @@ public class SlimeController : MonoBehaviour
                 return;
             }
         }
-        // 20回失敗したら保険で現状維持
         nextPatrolTime = Time.time + patrolInterval;
     }
 
+    // ★ ここで死亡処理を一元化
+    void Die()
+    {
+        isDead = true;
+
+        // 動きを完全停止
+        SafeStopAgent();          // isStopped/ResetPath（NavMesh上なら）
+        if (agent != null) agent.enabled = false; // 以後のエラー防止
+
+        // 物理で押されないようコライダーや剛体を調整（任意）
+        var rb = GetComponent<Rigidbody>();
+        if (rb) rb.isKinematic = true;
+
+        // アニメへ遷移（Animatorに bool "Die" を用意しておく）
+        animator.SetTrigger("Die");
+        animator.SetBool("Walk", false);
+
+        // アニメイベントで呼ぶなら不要。保険で遅延Destroyしたいときだけ使う
+        if (destroyDelayOnDieAnim > 0f)
+            Destroy(gameObject, destroyDelayOnDieAnim);
+    }
+
+    // ★ プレイヤーに“食べられた”ら即Destroy（例：PlayerEat というトリガーに当たったら）
     void OnTriggerEnter(Collider col)
     {
         if (col.gameObject.CompareTag("Weapon"))
         {
             damage = (int)(playerStatusSO.ATTACK / 2 - enemyStatusSO.enemyStatusList[0].Defence / 4);
             if (damage > 0) currentHP -= damage;
+            return;
         }
+
+        // プレイヤーの“食べる判定”用の当たり（タグ名はプロジェクトの実際に合わせて変更）
+        if (col.gameObject.CompareTag("PlayerEat"))
+        {
+            // すぐ消す（演出が要るなら先に Die() を呼んでから短い遅延DestroyでもOK）
+            Destroy(gameObject);
+        }
+    }
+
+    // --- Utility ---
+
+    bool CanUseAgent()
+    {
+        return agent != null && agent.enabled && gameObject.activeInHierarchy && agent.isOnNavMesh;
+    }
+
+    void SafeStopAgent()
+    {
+        if (CanUseAgent())
+        {
+            agent.isStopped = true;
+            agent.ResetPath();
+        }
+    }
+
+    // ▼ アニメーションイベント用：Dieアニメの最後で呼ぶと綺麗に消える
+    public void DestroySelf()
+    {
+        Destroy(gameObject);
     }
 }
