@@ -1,16 +1,13 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
+using System;
 
 public class PlayerController : MonoBehaviour
 {
     [SerializeField] PlayerStatusSO playerStatusSO;
     [Header("Move")]
     public float moveForce = 10f; // WASDで加える力の大きさ
-    // public TextMeshProUGUI HPText;
-    // [SerializeField] GameObject statusWindow;
-    public int currentHP;
-    // [SerializeField] GameObject itemBoxManager;
 
     [Header("Jump")]
     [SerializeField] float jumpSpeed = 7.5f;        // 上向きの初速（VelocityChange）
@@ -32,12 +29,26 @@ public class PlayerController : MonoBehaviour
     private Vector3 cameraForward;
     private Vector3 moveForward;
 
+    [Header("HP / Poison")]
+    public int maxHP;
+    public int currentHP;
+    public int maxPoisonRes = 100;
+    public int poisonRes = 0;
+
+    public event Action OnStatsChanged;
+
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
         animator = GetComponent<Animator>();
         currentHP = playerStatusSO.HP;
-        // HPText.text = "HP: " + currentHP.ToString();
+        maxHP     = playerStatusSO != null ? playerStatusSO.HP     : 100;
+        currentHP = Mathf.Clamp(currentHP == 0 ? maxHP : currentHP, 0, maxHP);
+
+        // 毒耐性の初期値がSOにあるなら使う。なければ0開始
+        if (playerStatusSO != null) poisonRes = Mathf.Clamp(playerStatusSO.PoisonR, 0, maxPoisonRes);
+
+        OnStatsChanged?.Invoke();
     }
 
     // ---- 入力・アニメはフレーム更新で処理 ----
@@ -158,5 +169,40 @@ public class PlayerController : MonoBehaviour
         //     itemBoxManager.GetComponent<ItemBoxManager>().ItemGet();
         //     Destroy(col.gameObject);
         // }
+    }
+
+    public void ApplyDamage(int dmg)
+    {
+        if (dmg <= 0) return;
+        currentHP = Mathf.Max(0, currentHP - dmg);
+        OnStatsChanged?.Invoke();
+        if (currentHP <= 0)
+        {
+            // ここでプレイヤー死亡処理が必要なら呼ぶ
+            // Die();
+        }
+    }
+
+    public void Heal(int amount)
+    {
+        if (amount <= 0) return;
+        currentHP = Mathf.Min(maxHP, currentHP + amount);
+        OnStatsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 毒入りを食べた時:
+    /// 1) 毒耐性は常に poisonAmount 増える（上限あり）
+    /// 2) 毒量 > 現在耐性 のとき、超過ぶんだけHPダメージ
+    /// </summary>
+    public void EatPoison(int poisonAmount)
+    {
+        if (poisonAmount <= 0) { OnStatsChanged?.Invoke(); return; }
+
+        int overflow = Mathf.Max(0, poisonAmount - poisonRes);
+        poisonRes = Mathf.Min(maxPoisonRes, poisonRes + poisonAmount);
+
+        if (overflow > 0) ApplyDamage(overflow);
+        else OnStatsChanged?.Invoke();
     }
 }
