@@ -64,9 +64,9 @@ public class SlimeController : MonoBehaviour
 
         // 状態遷移
         float dist = Vector3.Distance(target.position, transform.position);
-        if (dist <= attackRange)          state = State.Attack;
+        if (dist <= attackRange) state = State.Attack;
         else if (dist <= detectionRadius) state = State.Chase;
-        else                               state = State.Patrol;
+        else state = State.Patrol;
 
         switch (state)
         {
@@ -108,6 +108,8 @@ public class SlimeController : MonoBehaviour
             Die(); // ここで停止＆アニメ遷移
         }
     }
+    
+    public bool IsDead => isDead;
 
     void PatrolTick()
     {
