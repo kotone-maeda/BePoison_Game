@@ -9317,6 +9317,14 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 1301142839}
     - target: {fileID: 3254285325268127972, guid: 2dfbb63c9cdf7504faf4ff26b0581598, type: 3}
+      propertyPath: debugLog
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3254285325268127972, guid: 2dfbb63c9cdf7504faf4ff26b0581598, type: 3}
+      propertyPath: facingRef
+      value: 
+      objectReference: {fileID: 1301142843}
+    - target: {fileID: 3254285325268127972, guid: 2dfbb63c9cdf7504faf4ff26b0581598, type: 3}
       propertyPath: sfxSource
       value: 
       objectReference: {fileID: 1301142840}
@@ -9328,6 +9336,10 @@ PrefabInstance:
       propertyPath: promptGroup
       value: 
       objectReference: {fileID: 1694174399}
+    - target: {fileID: 3254285325268127972, guid: 2dfbb63c9cdf7504faf4ff26b0581598, type: 3}
+      propertyPath: triggerZone
+      value: 
+      objectReference: {fileID: 1301142845}
     - target: {fileID: 3254285325268127972, guid: 2dfbb63c9cdf7504faf4ff26b0581598, type: 3}
       propertyPath: losMask.m_Bits
       value: 512
@@ -9451,6 +9463,11 @@ AudioSource:
 --- !u!4 &1301142843 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 8855052669661678444, guid: 2dfbb63c9cdf7504faf4ff26b0581598, type: 3}
+  m_PrefabInstance: {fileID: 1301142837}
+  m_PrefabAsset: {fileID: 0}
+--- !u!65 &1301142845 stripped
+BoxCollider:
+  m_CorrespondingSourceObject: {fileID: 5741983196901600944, guid: 2dfbb63c9cdf7504faf4ff26b0581598, type: 3}
   m_PrefabInstance: {fileID: 1301142837}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &1301397837
