@@ -13,8 +13,11 @@ MonoBehaviour:
   m_Name: EnemySO
   m_EditorClassIdentifier: Assembly-CSharp::EnemyStatusSO
   enemyStatusList:
-  - name: Slime
-    hP: 20
-    poison: 10
+  - name: Chaser
+    hP: 40
+    attack: 20
+    defence: 5
+  - name: Runner
+    hP: 100
     attack: 10
     defence: 5

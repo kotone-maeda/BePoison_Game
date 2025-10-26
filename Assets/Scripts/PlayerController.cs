@@ -35,8 +35,8 @@ public class PlayerController : MonoBehaviour
     [Header("Stomachache / Poison")]
     public int maxStomachache;           // 腹痛の最大
     public int stomachache;              // 現在の腹痛（0→増えるほどツラい）
-    public int maxPoisonRes = 999;       // 任意上限
-    public int poisonRes = 0;            // 現在の毒耐性
+    public int maxPoisonRes;       // 任意上限
+    public int poisonRes;            // 現在の毒耐性
 
     [Tooltip("この割合(0-1)を超えた腹痛で移動半減")]
     [Range(0f, 1f)] public float slowThresholdPercent = 0.6f;
@@ -48,10 +48,17 @@ public class PlayerController : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         animator = GetComponent<Animator>();
 
-        // SO から初期値反映
-        maxStomachache = playerStatusSO ? playerStatusSO.StomachacheMax : 100;
-        stomachache    = Mathf.Clamp(stomachache, 0, maxStomachache); // 0開始想定だが一応Clamp
-        if (playerStatusSO) poisonRes = Mathf.Clamp(playerStatusSO.PoisonR, 0, maxPoisonRes);
+        // ---- Max系を SO から反映 ----
+        maxStomachache = playerStatusSO ? playerStatusSO.MaxStomachache : 100;
+        maxPoisonRes   = playerStatusSO ? playerStatusSO.MaxPoisonRes   : 100;
+
+        // 現在値の初期化（腹痛は通常0開始、毒耐性はSOの初期値）
+        stomachache = Mathf.Clamp(stomachache, 0, maxStomachache); // 既に保存値があれば尊重
+        if (stomachache == 0) stomachache = 0; // 明示（保存を使ってないなら0開始）
+
+        poisonRes = playerStatusSO
+            ? Mathf.Clamp(playerStatusSO.BasePoisonRes, 0, maxPoisonRes)
+            : Mathf.Clamp(poisonRes, 0, maxPoisonRes);
 
         OnStatsChanged?.Invoke();
     }
