@@ -7,7 +7,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] PlayerStatusSO playerStatusSO;
 
     [Header("Move")]
-    [SerializeField] float moveForce = 10f; // 基本移動力
+    [SerializeField] float moveForce = 10f;     // 基本移動力
     [SerializeField] float slowMultiplier = 0.5f; // 腹痛しきい値超えたときの減速率（1/2）
 
     [Header("Jump")]
@@ -33,10 +33,11 @@ public class PlayerController : MonoBehaviour
     Vector3 moveForward;
 
     [Header("Stomachache / Poison")]
-    public int maxStomachache;           // 腹痛の最大
-    public int stomachache;              // 現在の腹痛（0→増えるほどツラい）
-    public int maxPoisonRes;       // 任意上限
-    public int poisonRes;            // 現在の毒耐性
+    public int maxStomachache; // 腹痛の最大（SO から）
+    public int stomachache;    // 現在の腹痛（0→増えるほどツラい）
+
+    public int maxPoisonRes;   // 毒耐性の最大（SO から）
+    public int poisonRes;      // 現在の毒耐性
 
     [Tooltip("この割合(0-1)を超えた腹痛で移動半減")]
     [Range(0f, 1f)] public float slowThresholdPercent = 0.6f;
@@ -53,8 +54,8 @@ public class PlayerController : MonoBehaviour
         maxPoisonRes   = playerStatusSO ? playerStatusSO.MaxPoisonRes   : 100;
 
         // 現在値の初期化（腹痛は通常0開始、毒耐性はSOの初期値）
-        stomachache = Mathf.Clamp(stomachache, 0, maxStomachache); // 既に保存値があれば尊重
-        if (stomachache == 0) stomachache = 0; // 明示（保存を使ってないなら0開始）
+        stomachache = Mathf.Clamp(stomachache, 0, maxStomachache);
+        if (stomachache == 0) stomachache = 0;
 
         poisonRes = playerStatusSO
             ? Mathf.Clamp(playerStatusSO.BasePoisonRes, 0, maxPoisonRes)
@@ -128,7 +129,7 @@ public class PlayerController : MonoBehaviour
 
         // カメラ基準移動
         cameraForward = Vector3.Scale(Camera.main.transform.forward, new Vector3(1, 0, 1)).normalized;
-        moveForward = cameraForward * inputVertical + Camera.main.transform.right * inputHorizontal;
+        moveForward   = cameraForward * inputVertical + Camera.main.transform.right * inputHorizontal;
 
         // 腹痛で減速判定
         bool isSlowed = (float)stomachache >= maxStomachache * slowThresholdPercent;
@@ -147,7 +148,7 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // ===== 腹痛の操作 =====
+    // ===== 腹痛・毒の操作 =====
 
     /// <summary>腹痛を加算（0以上）。最大でクランプし、変更通知。</summary>
     public void AddStomachache(int amount)
@@ -183,7 +184,18 @@ public class PlayerController : MonoBehaviour
         else OnStatsChanged?.Invoke();
     }
 
-    // 既存呼び出しの互換用（以前の HP ダメージ/回復を腹痛に読み替え）
+    /// <summary>
+    /// ひとつの食べ物効果をまとめて適用するためのユーティリティ。
+    /// stomachacheIncrease → EatPoison(poison) → Relieve(heal) の順に適用。
+    /// </summary>
+    public void ConsumeFood(int stomachacheIncrease, int poison, int heal)
+    {
+        if (stomachacheIncrease > 0) AddStomachache(stomachacheIncrease);
+        if (poison > 0) EatPoison(poison);
+        if (heal > 0) RelieveStomachache(heal);
+    }
+
+    // 既存呼び出し互換（ダメージ=腹痛加算 / 回復=腹痛軽減）
     public void ApplyDamage(int dmg) => AddStomachache(Mathf.Max(0, dmg));
     public void Heal(int amount)     => RelieveStomachache(Mathf.Max(0, amount));
 }
