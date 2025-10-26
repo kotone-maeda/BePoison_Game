@@ -433,6 +433,7 @@ GameObject:
   - component: {fileID: 4077624689374258034}
   - component: {fileID: 984432331767051427}
   - component: {fileID: 2322220044999733678}
+  - component: {fileID: 3530507595635185392}
   m_Layer: 0
   m_Name: SlimePBR
   m_TagString: Untagged
@@ -552,6 +553,25 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 112
   m_CollisionDetection: 0
+--- !u!114 &3530507595635185392
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1931298151966786}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 23c3cbd4318e96042b117bbb9368e957, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeEdible
+  poisonAmount: 100
+  healAmount: 0
+  destroyOnEat: 1
+  priority: 0
+  eatClip: {fileID: 8300000, guid: 0ee5df69fc96c9a47836a7bbeae59a28, type: 3}
+  eatVolume: 1
+  slime: {fileID: 0}
 --- !u!1 &3605307362390668520
 GameObject:
   m_ObjectHideFlags: 0

@@ -10,15 +10,15 @@ public class SlimeController : MonoBehaviour
 
     [Header("Nav/Anim")]
     [SerializeField] float speed = 2.5f;
-    [SerializeField] string areaName = "ForestArea"; // NavMeshModifierVolume の Area 名
-    [SerializeField] float detectionRadius = 10f;   // 追跡開始距離
-    [SerializeField] float attackRange = 1.8f;      // 周囲(攻撃停止距離)
-    [SerializeField] float patrolRadius = 8f;       // 徘徊ターゲットの抽選半径
-    [SerializeField] float patrolInterval = 2.0f;   // 次の点を選ぶ最短間隔
+    [SerializeField] string areaName = "ForestArea";
+    [SerializeField] float detectionRadius = 10f;
+    [SerializeField] float attackRange = 1.8f;
+    [SerializeField] float patrolRadius = 8f;
+    [SerializeField] float patrolInterval = 2.0f;
     [SerializeField] float attackCooldown = 1.0f;
 
     [Header("Death")]
-    [SerializeField] float destroyDelayOnDieAnim = 0f; // アニメイベント未設定の場合の保険（秒）0なら使わない
+    [SerializeField] float destroyDelayOnDieAnim = 0f; // ※今は使わない（Edibleが消す）
 
     private NavMeshAgent agent;
     private Animator animator;
@@ -30,6 +30,7 @@ public class SlimeController : MonoBehaviour
     private int areaMask;
 
     private bool isDead = false;
+    public bool IsDead => isDead;        // ← Edible から参照される
 
     enum State { Patrol, Chase, Attack }
     State state = State.Patrol;
@@ -39,9 +40,12 @@ public class SlimeController : MonoBehaviour
         agent = GetComponent<NavMeshAgent>();
         animator = GetComponent<Animator>();
 
-        agent.speed = speed;
-        agent.stoppingDistance = attackRange;
-        agent.autoBraking = true;
+        if (agent)
+        {
+            agent.speed = speed;
+            agent.stoppingDistance = attackRange;
+            agent.autoBraking = true;
+        }
 
         int idx = NavMesh.GetAreaFromName(areaName);
         areaMask = (idx >= 0) ? (1 << idx) : NavMesh.AllAreas;
@@ -49,12 +53,16 @@ public class SlimeController : MonoBehaviour
             Debug.LogWarning($"Area '{areaName}' が見つかりません。徘徊は全エリアで行われます。", this);
 
         currentHP = enemyStatusSO.enemyStatusList[0].HP;
+
+        // NavMesh 用は Rigidbody なし/または isKinematic 推奨
+        var rb = GetComponent<Rigidbody>();
+        if (rb) rb.isKinematic = true;
+
         PickNewPatrolPoint();
     }
 
     void Update()
     {
-        // ★ 死亡中は完全停止＆何もしない
         if (isDead)
         {
             SafeStopAgent();
@@ -64,9 +72,9 @@ public class SlimeController : MonoBehaviour
 
         // 状態遷移
         float dist = Vector3.Distance(target.position, transform.position);
-        if (dist <= attackRange) state = State.Attack;
+        if (dist <= attackRange)          state = State.Attack;
         else if (dist <= detectionRadius) state = State.Chase;
-        else state = State.Patrol;
+        else                              state = State.Patrol;
 
         switch (state)
         {
@@ -84,7 +92,7 @@ public class SlimeController : MonoBehaviour
 
             case State.Attack:
                 SafeStopAgent();
-                Vector3 to = (target.position - transform.position);
+                Vector3 to = target.position - transform.position;
                 to.y = 0f;
                 if (to.sqrMagnitude > 0.001f)
                     transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(to), 12f * Time.deltaTime);
@@ -93,7 +101,6 @@ public class SlimeController : MonoBehaviour
                 {
                     animator.SetTrigger("Attack");
                     nextAttackTime = Time.time + attackCooldown;
-                    // ダメージはアニメイベントでプレイヤーへ
                 }
                 break;
         }
@@ -102,14 +109,11 @@ public class SlimeController : MonoBehaviour
         bool walking = CanUseAgent() && !agent.isStopped && agent.velocity.sqrMagnitude > 0.05f;
         animator.SetBool("Walk", walking);
 
-        // ★ HP処理：0以下になったら Die 発火（アニメ再生＆停止）
         if (currentHP <= 0 && !isDead)
         {
-            Die(); // ここで停止＆アニメ遷移
+            Die();
         }
     }
-    
-    public bool IsDead => isDead;
 
     void PatrolTick()
     {
@@ -143,54 +147,48 @@ public class SlimeController : MonoBehaviour
         nextPatrolTime = Time.time + patrolInterval;
     }
 
-    // ★ ここで死亡処理を一元化
-    void Die()
-    {
-        isDead = true;
-
-        // 動きを完全停止
-        SafeStopAgent();          // isStopped/ResetPath（NavMesh上なら）
-        if (agent != null) agent.enabled = false; // 以後のエラー防止
-
-        // 物理で押されないようコライダーや剛体を調整（任意）
-        var rb = GetComponent<Rigidbody>();
-        if (rb) rb.isKinematic = true;
-
-        // アニメへ遷移（Animatorに bool "Die" を用意しておく）
-        animator.SetTrigger("Die");
-        animator.SetBool("Walk", false);
-
-        // アニメイベントで呼ぶなら不要。保険で遅延Destroyしたいときだけ使う
-        if (destroyDelayOnDieAnim > 0f)
-            Destroy(gameObject, destroyDelayOnDieAnim);
-    }
-
-    // ★ プレイヤーに“食べられた”ら即Destroy（例：PlayerEat というトリガーに当たったら）
+    // 武器ヒットは「生存中のみ」受け付ける
     void OnTriggerEnter(Collider col)
     {
-        if (isDead)
-        {
-            if (col.gameObject.CompareTag("PlayerEat"))
-                Destroy(gameObject);
-            return;
-        }
+        if (isDead) return;
+
         if (col.gameObject.CompareTag("Weapon"))
         {
             animator.SetTrigger("GetHit");
             damage = (int)(playerStatusSO.ATTACK / 2 - enemyStatusSO.enemyStatusList[0].Defence / 4);
-            if (damage > 0) currentHP -= damage;
-            return;
-        }
-
-        // プレイヤーの“食べる判定”用の当たり（タグ名はプロジェクトの実際に合わせて変更）
-        if (col.gameObject.CompareTag("PlayerEat"))
-        {
-            // すぐ消す（演出が要るなら先に Die() を呼んでから短い遅延DestroyでもOK）
-            Destroy(gameObject);
+            if (damage > 0) ApplyDamage(damage);
         }
     }
 
-    // --- Utility ---
+    // 外からも呼べるダメージ口
+    public void ApplyDamage(int amount)
+    {
+        if (isDead || amount <= 0) return;
+        currentHP -= amount;
+        if (currentHP <= 0) Die();
+    }
+
+    // ★ ここで死亡処理を一元化（食べる/Destroyは Edible が実施）
+    void Die()
+    {
+        isDead = true;
+        Debug.Log($"{name} set IsDead = {isDead}");
+
+        SafeStopAgent();
+        if (agent) agent.enabled = false;
+
+        var rb = GetComponent<Rigidbody>();
+        if (rb) rb.isKinematic = true;
+
+        // 重要：Collider は残す（UI/Interact のため）
+        // 例）var col = GetComponent<Collider>(); if (col) col.enabled = true;
+
+        animator.SetTrigger("Die");
+        animator.SetBool("Walk", false);
+
+        // ここで Destroy はしない（食べた時に Edible が destroyTarget を消す）
+        // if (destroyDelayOnDieAnim > 0f) Destroy(gameObject, destroyDelayOnDieAnim);
+    }
 
     bool CanUseAgent()
     {
@@ -206,7 +204,7 @@ public class SlimeController : MonoBehaviour
         }
     }
 
-    // ▼ アニメーションイベント用：Dieアニメの最後で呼ぶと綺麗に消える
+    // 必要ならアニメイベントで呼ぶ
     public void DestroySelf()
     {
         Destroy(gameObject);

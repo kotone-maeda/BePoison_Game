@@ -1360,6 +1360,7 @@ GameObject:
   - component: {fileID: 1383506705668465384}
   - component: {fileID: 5741983196901600944}
   - component: {fileID: 3254285325268127972}
+  - component: {fileID: 3720376314489278578}
   m_Layer: 0
   m_Name: InteractBox
   m_TagString: Untagged
@@ -1376,7 +1377,7 @@ Transform:
   m_GameObject: {fileID: 3848849634915952343}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: 1.73}
+  m_LocalPosition: {x: 0, y: 1.17, z: 1.73}
   m_LocalScale: {x: 2, y: 2, z: 2}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1401,7 +1402,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
+  m_Size: {x: 1.5, y: 1.5, z: 1.5}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &3254285325268127972
 MonoBehaviour:
@@ -1416,13 +1417,47 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InteractBox
   player: {fileID: 0}
+  facingRef: {fileID: 0}
+  useCameraXZ: 1
+  triggerZone: {fileID: 0}
   promptGroup: {fileID: 0}
   promptText: {fileID: 0}
   losMask:
     serializedVersion: 2
     m_Bits: 4294967295
   maxPickAngle: 70
+  stickyExtraAngle: 25
+  nearGraceDist: 1.2
+  stickyKeepDistance: 2.5
   sfxSource: {fileID: 0}
+  debugLog: 0
+--- !u!54 &3720376314489278578
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3848849634915952343}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 1
+  m_Interpolate: 0
+  m_Constraints: 112
+  m_CollisionDetection: 0
 --- !u!1 &4009119080283266095
 GameObject:
   m_ObjectHideFlags: 0
