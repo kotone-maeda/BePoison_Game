@@ -27,9 +27,17 @@ public class InteractBox : MonoBehaviour
     [Tooltip("一度選ばれた対象に対して許容する追加角度")]
     [SerializeField] float stickyExtraAngle = 25f;
     [Tooltip("至近距離なら角度・LOSを免除する距離")]
-    [SerializeField] float nearGraceDist = 1.2f;
+    [SerializeField] float nearGraceDist = 2.0f;   // ← 少し広げた
     [Tooltip("選択済みを保持する距離（これ以内ならLOSも緩く）")]
-    [SerializeField] float stickyKeepDistance = 2.5f;
+    [SerializeField] float stickyKeepDistance = 3.0f;
+
+    [Header("Relax rules in zone")]
+    [Tooltip("ゾーン内にいる対象は LOS を無視する")]
+    [SerializeField] bool ignoreLOSInsideZone = true;
+    [Tooltip("ゾーン内にいる対象は前方角度を無視する")]
+    [SerializeField] bool ignoreFrontInsideZone = true;
+    [Tooltip("current が取れない時、ゾーン内で最も近い対象に最後の手段でスナップ")]
+    [SerializeField] bool snapClosestInZoneWhenNone = true;
 
     [Header("Audio")]
     [SerializeField] AudioSource sfxSource;
@@ -62,17 +70,16 @@ public class InteractBox : MonoBehaviour
         }
     }
 
-    // ====== メインロジック ======
     void UpdateTargetAndPrompt()
     {
-        // 破棄済み候補を掃除
+        // 破棄済み掃除
         candidates.RemoveWhere(x =>
         {
             var mb = x as MonoBehaviour;
             return (mb == null) || (mb && mb.Equals(null));
         });
 
-        // ★ ゾーン外の候補を毎フレーム除外（Exit取りこぼし対策）
+        // ゾーン外掃除（Exit取りこぼし対策）
         if (triggerZone)
         {
             candidates.RemoveWhere(x =>
@@ -82,7 +89,7 @@ public class InteractBox : MonoBehaviour
             });
         }
 
-        // ★ current は「候補に残っている & ゾーン内」じゃなければ手放す
+        // current が候補に残っていない or ゾーン外なら手放す
         if (current != null)
         {
             var cmb = current as MonoBehaviour;
@@ -93,22 +100,24 @@ public class InteractBox : MonoBehaviour
             }
         }
 
-        // --- 選択済み（current）を“保持”できるならそれを使う ---
+        // 保持できるならそのまま
         if (current != null)
         {
             Transform ctr;
             var cpos = GetPosSafe(current, out ctr);
-            if (ctr != null &&
-                current.CanInteract(player) &&
-                IsInFront(cpos, sticky: true) &&
-                HasLineOfSight(cpos, ctr, sticky: true))
+            if (ctr != null)
             {
-                // まだ保持できる
-                ShowPrompt(current.GetPrompt(player));
-                if (debugLog) Debug.Log($"[InteractDbg] Keep: {ctr.name}");
-                return;
+                bool inZone = !triggerZone || IsInsideZone(ctr);
+                bool frontOK = (ignoreFrontInsideZone && inZone) || IsInFront(cpos, sticky: true);
+                bool losOK   = (ignoreLOSInsideZone   && inZone) || HasLineOfSight(cpos, ctr, sticky: true);
+
+                if (current.CanInteract(player) && frontOK && losOK)
+                {
+                    ShowPrompt(current.GetPrompt(player));
+                    return;
+                }
             }
-            current = null; // 手放して選び直し
+            current = null;
         }
 
         if (debugLog)
@@ -119,14 +128,14 @@ public class InteractBox : MonoBehaviour
                 var pos = GetPosSafe(x, out tr);
                 if (tr == null) continue;
                 bool inZone = !triggerZone || IsInsideZone(tr);
-                bool can = inZone && x.CanInteract(player);
-                bool front = inZone && IsInFront(pos, sticky: false);
-                bool los = inZone && HasLineOfSight(pos, tr, sticky: false);
+                bool can    = inZone && x.CanInteract(player);
+                bool front  = inZone && ((ignoreFrontInsideZone) || IsInFront(pos, sticky: false));
+                bool los    = inZone && ((ignoreLOSInsideZone)   || HasLineOfSight(pos, tr, sticky: false));
                 Debug.Log($"[InteractDbg] {tr.name} inZone:{inZone} can:{can} front:{front} los:{los}", tr);
             }
         }
 
-        // --- 新規選定：優先度 → 距離 ---
+        // 新規選定
         IInteractable best = null;
         float bestDist2 = float.MaxValue;
 
@@ -136,10 +145,13 @@ public class InteractBox : MonoBehaviour
             var pos = GetPosSafe(it, out tr);
             if (tr == null) continue;
 
-            if (triggerZone && !IsInsideZone(tr)) continue;
+            bool inZone = !triggerZone || IsInsideZone(tr);
+            if (!inZone) continue;
             if (!it.CanInteract(player)) continue;
-            if (!IsInFront(pos, sticky: false)) continue;
-            if (!HasLineOfSight(pos, tr, sticky: false)) continue;
+
+            bool frontOK = ignoreFrontInsideZone || IsInFront(pos, sticky: false);
+            bool losOK   = ignoreLOSInsideZone   || HasLineOfSight(pos, tr, sticky: false);
+            if (!frontOK || !losOK) continue;
 
             float d2 = (pos - transform.position).sqrMagnitude;
             if (best == null ||
@@ -148,6 +160,17 @@ public class InteractBox : MonoBehaviour
             {
                 best = it; bestDist2 = d2;
             }
+        }
+
+        // どうしても拾えないときの“最後の手段”：ゾーン内で最も近い対象を掴む
+        if (best == null && snapClosestInZoneWhenNone && candidates.Count > 0)
+        {
+            best = candidates
+                .Select(it => new { it, tr = (it as MonoBehaviour)?.transform })
+                .Where(x => x.tr && (!triggerZone || IsInsideZone(x.tr)))
+                .OrderBy(x => (x.tr.position - transform.position).sqrMagnitude)
+                .Select(x => x.it)
+                .FirstOrDefault();
         }
 
         current = best;
@@ -161,14 +184,11 @@ public class InteractBox : MonoBehaviour
 
         var targetMb = current as MonoBehaviour;
 
-        // 実行（中で Destroy される可能性あり）
         current.Interact(player);
 
-        // SFX（あれば）
         if (current != null && current.TryGetSfx(out var clip, out var vol) && clip && sfxSource)
             sfxSource.PlayOneShot(clip, vol);
 
-        // 破棄 or ゾーン外なら即クリーンアップ
         bool gone = (targetMb == null || targetMb.Equals(null));
         if (!gone && triggerZone && targetMb != null) gone = !IsInsideZone(targetMb.transform);
 
@@ -200,15 +220,12 @@ public class InteractBox : MonoBehaviour
 
     bool IsInFront(Vector3 worldPos, bool sticky)
     {
-        // 原点：プレイヤー（facingRef）か InteractBox
         Vector3 origin = facingRef ? facingRef.position : transform.position;
 
-        // 近距離なら無条件OK
         float keepDist = Mathf.Max(nearGraceDist, 1.0f);
         float sqrDist = (worldPos - origin).sqrMagnitude;
         if (sqrDist <= keepDist * keepDist) return true;
 
-        // 前方ベクトル：カメラのXZ or facingRef.forwardのXZ
         Vector3 fwd;
         if (useCameraXZ && Camera.main != null)
             fwd = Vector3.Scale(Camera.main.transform.forward, new Vector3(1, 0, 1)).normalized;
@@ -217,12 +234,11 @@ public class InteractBox : MonoBehaviour
 
         if (fwd.sqrMagnitude < 1e-6f) fwd = transform.forward;
 
-        // XZ 平面で比較（縦方向の影響を除去）
         Vector3 to = worldPos - origin;
         to.y = 0f; fwd.y = 0f;
 
         float mag = to.magnitude;
-        if (mag < 0.05f) return true; // ほぼ重なり
+        if (mag < 0.05f) return true;
         to /= mag;
 
         float limit = sticky ? (maxPickAngle + stickyExtraAngle) : maxPickAngle;
@@ -237,7 +253,6 @@ public class InteractBox : MonoBehaviour
         Vector3 dir = worldPos - origin;
         float dist = dir.magnitude;
 
-        // 至近/スティッキー保持距離はゆるめ
         if (dist <= nearGraceDist) return true;
         if (sticky && dist <= stickyKeepDistance) return true;
 
@@ -245,18 +260,17 @@ public class InteractBox : MonoBehaviour
         if (Physics.Raycast(origin, dir, out RaycastHit hit, dist, losMask, QueryTriggerInteraction.Ignore))
         {
             if (target != null && (hit.transform == target || hit.transform.IsChildOf(target)))
-                return true; // 目標自身に当たっただけならOK
-            return false; // 壁・地形で遮られた
+                return true;
+            return false;
         }
-        return true; // 何にも当たらない＝見えてる
+        return true;
     }
 
-    // 互換用（昔の呼び出しが残っていても落ちないように）
     bool HasLineOfSight(Vector3 worldPos) => HasLineOfSight(worldPos, null, false);
 
     bool IsInsideZone(Transform tr)
     {
-        if (!triggerZone || tr == null) return true; // 参照無ければスキップ
+        if (!triggerZone || tr == null) return true;
         return triggerZone.bounds.Contains(tr.position);
     }
 
@@ -277,7 +291,7 @@ public class InteractBox : MonoBehaviour
         promptGroup.blocksRaycasts = false;
     }
 
-    // ====== Trigger 検知 ======
+    // ====== Trigger ======
     void OnTriggerEnter(Collider other)
     {
         foreach (var it in other.GetComponents<IInteractable>())
@@ -286,7 +300,7 @@ public class InteractBox : MonoBehaviour
         foreach (var it in other.GetComponentsInParent<IInteractable>())
             if (it != null) candidates.Add(it);
 
-        if (debugLog) Debug.Log($"[InteractDbg] Enter: {other.name}");
+        // if (debugLog) Debug.Log($"[InteractDbg] Enter: {other.name}");
     }
 
     void OnTriggerExit(Collider other)
@@ -296,7 +310,6 @@ public class InteractBox : MonoBehaviour
         foreach (var it in other.GetComponentsInParent<IInteractable>())
             candidates.Remove(it);
 
-        // current が出て行ったら即消す
         if (current != null)
         {
             var mb = current as MonoBehaviour;
@@ -306,8 +319,6 @@ public class InteractBox : MonoBehaviour
                 HidePrompt();
             }
         }
-
-        if (debugLog) Debug.Log($"[InteractDbg] Exit: {other.name}");
     }
 
     void OnDrawGizmosSelected()
