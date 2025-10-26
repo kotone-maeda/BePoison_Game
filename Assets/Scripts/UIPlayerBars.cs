@@ -33,7 +33,7 @@ public class UIPlayerBars : MonoBehaviour
         if (hpBar)     hpBar.value = player.currentHP;
         if (poisonBar) poisonBar.value = player.poisonRes;
 
-        if (hpLabel)     hpLabel.text     = $"HP {player.currentHP}/{player.maxHP}";
+        if (hpLabel)     hpLabel.text     = $"腹痛ゲージ {player.currentHP}/{player.maxHP}";
         if (poisonLabel) poisonLabel.text = $"毒耐性 {player.poisonRes}/{player.maxPoisonRes}";
     }
 }
