@@ -1,39 +1,45 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
-using TMPro;
 using System;
 
 public class PlayerController : MonoBehaviour
 {
     [SerializeField] PlayerStatusSO playerStatusSO;
+
     [Header("Move")]
-    public float moveForce = 10f; // WASDで加える力の大きさ
+    [SerializeField] float moveForce = 10f; // 基本移動力
+    [SerializeField] float slowMultiplier = 0.5f; // 腹痛しきい値超えたときの減速率（1/2）
 
     [Header("Jump")]
-    [SerializeField] float jumpSpeed = 7.5f;        // 上向きの初速（VelocityChange）
-    [SerializeField] Transform groundCheck;         // 足元位置（空の子オブジェクトを割り当てる）
+    [SerializeField] float jumpSpeed = 7.5f;
+    [SerializeField] Transform groundCheck;
     [SerializeField] float groundCheckRadius = 0.2f;
-    [SerializeField] LayerMask groundMask = ~0;     // 地面レイヤー（必要なら設定）
+    [SerializeField] LayerMask groundMask = ~0;
+
     bool jumpRequested;
     bool isGrounded;
+
     [Header("Attack")]
-    [SerializeField] float attackCooldown = 0.35f; // 連打抑制したいとき
+    [SerializeField] float attackCooldown = 0.35f;
     float nextAttackTime = 0f;
-    private Rigidbody rb;
-    private Animator animator;
 
-    // Updateで作った入力結果を物理用にバッファ
-    // private Vector3 heldDir = Vector3.zero;
-    private float inputHorizontal;
-    private float inputVertical;
-    private Vector3 cameraForward;
-    private Vector3 moveForward;
+    Rigidbody rb;
+    Animator animator;
 
-    [Header("HP / Poison")]
-    public int maxHP;
-    public int currentHP;
-    public int maxPoisonRes = 100;
-    public int poisonRes = 0;
+    // 入力バッファ
+    float inputHorizontal;
+    float inputVertical;
+    Vector3 cameraForward;
+    Vector3 moveForward;
+
+    [Header("Stomachache / Poison")]
+    public int maxStomachache;           // 腹痛の最大
+    public int stomachache;              // 現在の腹痛（0→増えるほどツラい）
+    public int maxPoisonRes = 999;       // 任意上限
+    public int poisonRes = 0;            // 現在の毒耐性
+
+    [Tooltip("この割合(0-1)を超えた腹痛で移動半減")]
+    [Range(0f, 1f)] public float slowThresholdPercent = 0.6f;
 
     public event Action OnStatsChanged;
 
@@ -41,48 +47,27 @@ public class PlayerController : MonoBehaviour
     {
         rb = GetComponent<Rigidbody>();
         animator = GetComponent<Animator>();
-        currentHP = playerStatusSO.HP;
-        maxHP     = playerStatusSO != null ? playerStatusSO.HP     : 100;
-        currentHP = Mathf.Clamp(currentHP == 0 ? maxHP : currentHP, 0, maxHP);
 
-        // 毒耐性の初期値がSOにあるなら使う。なければ0開始
-        if (playerStatusSO != null) poisonRes = Mathf.Clamp(playerStatusSO.PoisonR, 0, maxPoisonRes);
+        // SO から初期値反映
+        maxStomachache = playerStatusSO ? playerStatusSO.StomachacheMax : 100;
+        stomachache    = Mathf.Clamp(stomachache, 0, maxStomachache); // 0開始想定だが一応Clamp
+        if (playerStatusSO) poisonRes = Mathf.Clamp(playerStatusSO.PoisonR, 0, maxPoisonRes);
 
         OnStatsChanged?.Invoke();
     }
 
-    // ---- 入力・アニメはフレーム更新で処理 ----
     void Update()
     {
-        // HPText.text = "HP: " + currentHP.ToString();
         var k = Keyboard.current;
         var m = Mouse.current;
         if (k == null || m == null) return;
 
-        // ---- 攻撃：右クリックの「押された瞬間」
+        // 右クリック攻撃
         if (m.rightButton.wasPressedThisFrame && Time.time >= nextAttackTime)
         {
-            animator.SetTrigger("Attack");      // ← Trigger を使うのが楽
+            animator.SetTrigger("Attack");
             nextAttackTime = Time.time + attackCooldown;
         }
-
-        // if (k.tabKey.wasPressedThisFrame)
-        // {
-        //     bool isActive = !statusWindow.activeSelf;
-        //     statusWindow.SetActive(isActive);
-
-        //     if (isActive)
-        //     {
-        //         // UIを開いたとき：ゲームを一時停止
-        //         Time.timeScale = 0f;
-        //         itemBoxManager.GetComponent<ItemBoxManager>().ItemOpen();
-        //     }
-        //     else
-        //     {
-        //         // UIを閉じたとき：再開
-        //         Time.timeScale = 1f;
-        //     }
-        // }
 
         if (k.spaceKey.wasPressedThisFrame) jumpRequested = true;
 
@@ -92,16 +77,16 @@ public class PlayerController : MonoBehaviour
         if (k.sKey.isPressed) v -= 1f;
         if (k.wKey.isPressed) v += 1f;
 
+        // ゲームパッド併用
         var gp = Gamepad.current;
         if (gp != null)
         {
             Vector2 stick = gp.leftStick.ReadValue();
-            // キー入力より有意に動いていればスティック値を優先
             if (Mathf.Abs(stick.x) > Mathf.Abs(h)) h = stick.x;
             if (Mathf.Abs(stick.y) > Mathf.Abs(v)) v = stick.y;
         }
 
-        // 斜め入力で速くなりすぎないように（W+Dなど）：両方押しのときだけ正規化
+        // 斜め正規化
         if (h != 0f && v != 0f)
         {
             Vector2 n = new Vector2(h, v).normalized;
@@ -111,89 +96,74 @@ public class PlayerController : MonoBehaviour
         inputHorizontal = h;
         inputVertical   = v;
 
-        // --- アニメーション（押下状態から算出） ---
-        // 元コードの意図を踏襲：W/SでRun、AでRunLeft、DでRunRight
-        bool run = k.wKey.isPressed || k.sKey.isPressed || k.aKey.isPressed || k.dKey.isPressed;
-
+        bool run = (Mathf.Abs(h) > 0.01f || Mathf.Abs(v) > 0.01f);
         animator.SetBool("Run", run);
     }
 
-    // ---- 物理は固定タイミングで処理 ----
     void FixedUpdate()
     {
-        isGrounded = false;
-        if (groundCheck != null)
-        {
-            // 足元でSphereCast風の接地確認
+        // 接地チェック
+        if (groundCheck)
             isGrounded = Physics.CheckSphere(groundCheck.position, groundCheckRadius, groundMask, QueryTriggerInteraction.Ignore);
-        }
         else
-        {
-            // groundCheck 未設定のときの簡易フォールバック
             isGrounded = Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.3f, groundMask, QueryTriggerInteraction.Ignore);
-        }
 
-        // --- ジャンプ実行 ---
+        // ジャンプ
         if (jumpRequested && isGrounded)
         {
-            // いまの上向き/下向き速度を一旦リセットしてから上向き初速を与える
             var v = rb.linearVelocity;
             v.y = 0f;
             rb.linearVelocity = v;
             rb.AddForce(Vector3.up * jumpSpeed, ForceMode.VelocityChange);
-
             animator.SetTrigger("Jump");
         }
         jumpRequested = false;
-        
+
+        // カメラ基準移動
         cameraForward = Vector3.Scale(Camera.main.transform.forward, new Vector3(1, 0, 1)).normalized;
         moveForward = cameraForward * inputVertical + Camera.main.transform.right * inputHorizontal;
-        rb.linearVelocity = moveForward * moveForce + new Vector3(0, rb.linearVelocity.y, 0);
 
-        if(moveForward != Vector3.zero)
-        {
+        // 腹痛で減速判定
+        bool isSlowed = (float)stomachache >= maxStomachache * slowThresholdPercent;
+        float speedMul = isSlowed ? slowMultiplier : 1f;
+
+        rb.linearVelocity = moveForward * (moveForce * speedMul) + new Vector3(0, rb.linearVelocity.y, 0);
+
+        if (moveForward != Vector3.zero)
             transform.rotation = Quaternion.LookRotation(moveForward);
-        }
-    }
 
-    void OnCollisionEnter(Collision col)
-    {
-        currentHP -= 10;
-    }
-
-    void OnTriggerEnter(Collider col)
-    {
-        // if (col.gameObject.CompareTag("Item"))
-        // {
-        //     itemBoxManager.GetComponent<ItemBoxManager>().getItem = col.gameObject.GetComponent<ItemManager>().itemNo;
-        //     itemBoxManager.GetComponent<ItemBoxManager>().ItemGet();
-        //     Destroy(col.gameObject);
-        // }
-    }
-
-    public void ApplyDamage(int dmg)
-    {
-        if (dmg <= 0) return;
-        currentHP = Mathf.Max(0, currentHP - dmg);
-        OnStatsChanged?.Invoke();
-        if (currentHP <= 0)
+        // 死亡判定（腹痛が最大に達したら）
+        if (stomachache >= maxStomachache)
         {
-            // ここでプレイヤー死亡処理が必要なら呼ぶ
+            // TODO: 死亡処理（アニメ・リスポーンなど）
             // Die();
         }
     }
 
-    public void Heal(int amount)
+    // ===== 腹痛の操作 =====
+
+    /// <summary>腹痛を加算（0以上）。最大でクランプし、変更通知。</summary>
+    public void AddStomachache(int amount)
     {
         if (amount <= 0) return;
-        currentHP = Mathf.Min(maxHP, currentHP + amount);
-        OnStatsChanged?.Invoke();
+        int prev = stomachache;
+        stomachache = Mathf.Min(maxStomachache, stomachache + amount);
+        if (stomachache != prev) OnStatsChanged?.Invoke();
+    }
+
+    /// <summary>腹痛を軽減（0以上）。0までクランプし、変更通知。</summary>
+    public void RelieveStomachache(int amount)
+    {
+        if (amount <= 0) return;
+        int prev = stomachache;
+        stomachache = Mathf.Max(0, stomachache - amount);
+        if (stomachache != prev) OnStatsChanged?.Invoke();
     }
 
     /// <summary>
     /// 毒入りを食べた時:
     /// 1) 毒耐性は常に poisonAmount 増える（上限あり）
-    /// 2) 毒量 > 現在耐性 のとき、超過ぶんだけHPダメージ
+    /// 2) 毒量 > 現在耐性 のとき、超過ぶんだけ腹痛に加算
     /// </summary>
     public void EatPoison(int poisonAmount)
     {
@@ -202,7 +172,11 @@ public class PlayerController : MonoBehaviour
         int overflow = Mathf.Max(0, poisonAmount - poisonRes);
         poisonRes = Mathf.Min(maxPoisonRes, poisonRes + poisonAmount);
 
-        if (overflow > 0) ApplyDamage(overflow);
+        if (overflow > 0) AddStomachache(overflow);
         else OnStatsChanged?.Invoke();
     }
+
+    // 既存呼び出しの互換用（以前の HP ダメージ/回復を腹痛に読み替え）
+    public void ApplyDamage(int dmg) => AddStomachache(Mathf.Max(0, dmg));
+    public void Heal(int amount)     => RelieveStomachache(Mathf.Max(0, amount));
 }
