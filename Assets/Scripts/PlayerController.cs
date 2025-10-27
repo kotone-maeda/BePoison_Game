@@ -195,6 +195,66 @@ public class PlayerController : MonoBehaviour
         if (heal > 0) RelieveStomachache(heal);
     }
 
+    // ▼ 小数の端数を貯めるバッファ（ゾーン用）
+    float _zoneHealAccum;
+    float _zonePoisonAccum;
+    float _zoneStomachAccum;
+
+    // ▼ 小数→整数へ切り出すヘルパ
+    int FlushWhole(ref float acc)
+    {
+        int whole = (int)acc;       // 0以上のみ想定
+        if (whole != 0) acc -= whole;
+        return whole;
+    }
+
+    /// <summary>
+    /// AreaStatusVolume から毎フレーム呼ばれる“じわじわ適用”用API（毎秒値×deltaTimeが渡ってくる前提）
+    /// heal: 腹痛を減らす（回復）
+    /// poisonGain: 毒耐性を上げる（上限超過は腹痛へ）
+    /// stomachacheGain: 腹痛を直接増やす
+    /// </summary>
+    public void ApplyZoneTick(float heal, float poisonGain, float stomachacheGain)
+    {
+        // 端数を貯める
+        if (heal > 0f)           _zoneHealAccum     += heal;
+        if (poisonGain > 0f)     _zonePoisonAccum   += poisonGain;
+        if (stomachacheGain > 0f)_zoneStomachAccum  += stomachacheGain;
+
+        // 1以上になった分だけ整数で適用（既存の通知/上限処理を活かす）
+        int healInt      = FlushWhole(ref _zoneHealAccum);
+        int poisonInt    = FlushWhole(ref _zonePoisonAccum);
+        int stomachInt   = FlushWhole(ref _zoneStomachAccum);
+
+        // 腹痛の直接増加
+        if (stomachInt > 0)
+            AddStomachache(stomachInt); // 既存でClamp+OnStatsChanged
+
+        // 毒耐性の増加（上限超過は腹痛へ）。EatPoisonは「入力=“毒量”」前提なのでここは手動で適用
+        if (poisonInt > 0)
+        {
+            int before   = poisonRes;
+            int newRes   = Mathf.Min(maxPoisonRes, poisonRes + poisonInt);
+            int applied  = newRes - before;            // 実際に盛れた分
+            int overflow = poisonInt - applied;        // 上限超過分
+
+            poisonRes = newRes;
+
+            if (overflow > 0)
+            {
+                AddStomachache(overflow);              // ここで通知も飛ぶ
+            }
+            else
+            {
+                OnStatsChanged?.Invoke();              // overflow無しでもUI更新
+            }
+        }
+
+        // 回復（腹痛減少）
+        if (healInt > 0)
+            RelieveStomachache(healInt); // 既存でClamp+OnStatsChanged
+    }
+
     // 既存呼び出し互換（ダメージ=腹痛加算 / 回復=腹痛軽減）
     public void ApplyDamage(int dmg) => AddStomachache(Mathf.Max(0, dmg));
     public void Heal(int amount)     => RelieveStomachache(Mathf.Max(0, amount));

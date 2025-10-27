@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 64ff2f71f91f4a948bafedf4a495ac4b, type: 3}
   m_Name: PlayerSO
   m_EditorClassIdentifier: Assembly-CSharp::PlayerStatusSO
-  stomachacheMax: 100
-  poisonResistance: 100
+  maxStomachache: 100
+  maxPoisonRes: 100
+  basePoisonRes: 0
   attack: 20
   defence: 10
