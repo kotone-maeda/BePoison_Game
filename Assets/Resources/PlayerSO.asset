@@ -14,6 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerStatusSO
   maxStomachache: 100
   maxPoisonRes: 100
-  basePoisonRes: 0
+  basePoisonRes: 30
   attack: 20
   defence: 10
