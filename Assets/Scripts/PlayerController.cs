@@ -40,7 +40,7 @@ public class PlayerController : MonoBehaviour
     public int poisonRes;      // 現在の毒耐性
 
     [Tooltip("この割合(0-1)を超えた腹痛で移動半減")]
-    [Range(0f, 1f)] public float slowThresholdPercent = 0.6f;
+    [Range(0f, 1f)] public float slowThresholdPercent = 0.9f;
 
     public event Action OnStatsChanged;
 
